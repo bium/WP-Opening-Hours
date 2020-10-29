@@ -1,5 +1,5 @@
 <?php
-
+// Customized for BiUM from original file: https://github.com/janizde/WP-Opening-Hours/blob/master/classes/OpeningHours/Module/Shortcode/OverviewModel.php
 namespace OpeningHours\Module\Shortcode;
 
 use OpeningHours\Entity\Holiday;
@@ -41,17 +41,27 @@ class OverviewModel {
    * @var       int
    */
   protected $startOfWeek;
+  
+  /**
+   * If model has irregular openings or holidays
+   * @var       bool
+   */
+  protected $has_irregular_openings_or_holidays = false;
 
   public function __construct(array $periods, \DateTime $now = null) {
     $this->startOfWeek = Dates::getStartOfWeek();
     $this->now = $now === null ? Dates::getNow() : $now;
 
     $nowWeekday = (int) $this->now->format('w');
+    
+    // 
+    $this->startOfWeek = $nowWeekday;
+    
     $this->minDate = clone $this->now;
     $this->minDate->setTime(0, 0, 0);
     if ($nowWeekday !== $this->startOfWeek) {
-      $offset = ($nowWeekday + 7 - $this->startOfWeek) % 7;
-      $this->minDate->sub(new \DateInterval('P' . $offset . 'D'));
+      //$offset = ($nowWeekday + 7 - $this->startOfWeek) % 7;
+      //$this->minDate->sub(new \DateInterval('P' . $offset . 'D'));
     }
 
     $this->maxDate = clone $this->minDate;
@@ -87,6 +97,7 @@ class OverviewModel {
       if ($holiday->getStart() <= $this->minDate && $holiday->getEnd() >= $this->maxDate) {
         foreach ($this->data as &$day) {
           $day['items'] = $holiday;
+          $this->has_irregular_openings_or_holidays = true;
         }
         continue;
       }
@@ -95,6 +106,7 @@ class OverviewModel {
         $interval = $holiday->getEnd()->diff($this->minDate);
         for ($i = 0; $i < $interval->days + 1; ++$i) {
           $this->data[$i]['items'] = $holiday;
+          $this->has_irregular_openings_or_holidays = true;
         }
         continue;
       }
@@ -103,6 +115,7 @@ class OverviewModel {
         $interval = $this->maxDate->diff($holiday->getStart());
         for ($i = 7 - $interval->days; $i < 7; ++$i) {
           $this->data[$i]['items'] = $holiday;
+          $this->has_irregular_openings_or_holidays = true;
         }
         continue;
       }
@@ -113,6 +126,7 @@ class OverviewModel {
 
       for ($i = $offset->days; $i < $offset->days + $interval->days + 1; ++$i) {
         $this->data[$i]['items'] = $holiday;
+        $this->has_irregular_openings_or_holidays = true;
       }
     }
   }
@@ -130,6 +144,7 @@ class OverviewModel {
 
       $offset = $irregularOpening->getDate()->diff($this->minDate);
       $this->data[$offset->days]['items'] = $irregularOpening;
+      $this->has_irregular_openings_or_holidays = true;
     }
   }
 
@@ -138,6 +153,7 @@ class OverviewModel {
    * @return    array               The compressed model data
    */
   public function getCompressedData() {
+    usort( $this->data, function($a, $b) {return (($a['days'][0]->getIndex() -7 )%7) > (($b['days'][0]->getIndex() - 7)%7);});
     $compressed = array();
     foreach ($this->data as $day) {
       $inserted = false;
@@ -223,5 +239,12 @@ class OverviewModel {
    */
   public function getStartOfWeek() {
     return $this->startOfWeek;
+  }
+
+  /**
+   * @return boolean
+   */
+  public function hasIrregularOpeningsOrHolidays() {
+    return $this->has_irregular_openings_or_holidays;
   }
 }

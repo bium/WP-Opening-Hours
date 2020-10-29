@@ -1,5 +1,5 @@
 <?php
-
+// Customized for BiUM from original file: https://github.com/janizde/WP-Opening-Hours/blob/master/classes/OpeningHours/Module/Shortcode/Overview.php
 namespace OpeningHours\Module\Shortcode;
 
 use OpeningHours\Entity\Holiday;
@@ -9,6 +9,7 @@ use OpeningHours\Entity\Set;
 use OpeningHours\Module\OpeningHours;
 use OpeningHours\Util\Dates;
 use OpeningHours\Util\Weekdays;
+use OpeningHours\Module\Shortcode;
 
 /**
  * Shortcode implementation for a list or regular Opening Periods
@@ -94,6 +95,19 @@ class Overview extends AbstractShortcode {
         }
       }
 
+      /** Après que la bibliothèque est fermée pour la journée (la date de la prochaine période est différente d'aujourd'hui et aujourd'hui n'est pas un jour de congé), on peut décaler le calendrier d'un jour pour ne pas afficher les horaires du jour **/
+      if (!$set->isOpen()) {
+          $nextPeriod = $set->getNextOpenPeriod();
+          $nextOpeningDatetime = $nextPeriod->getTimeStart();
+          if (Dates::compareDate(Dates::getNow(), $nextOpeningDatetime) != 0) {
+              $todayData = $set->getDataForDate(Dates::getNow());
+              if (count($todayData['holidays']) == 0) {
+                    $interval = new \DateInterval('P1D');
+                    $now->add($interval);
+              }
+          }
+      }
+
       $model = new OverviewModel($set->getPeriods()->getArrayCopy(), $now);
 
       if ($attributes['include_holidays']) {
@@ -105,8 +119,12 @@ class Overview extends AbstractShortcode {
       }
     }
 
-    $data = $attributes['compress'] ? $model->getCompressedData() : $model->getData();
+    $data = $attributes['compress'] && !$model->hasIrregularOpeningsOrHolidays() ? $model->getCompressedData() : $model->getData();
 
+    if ($model->hasIrregularOpeningsOrHolidays()) {
+        $attributes['short'] = false;
+    }
+    
     $days = array();
     foreach ($data as $row) {
       if (!$attributes['show_closed_days'] && is_array($row['items']) && count($row['items']) < 1) {
@@ -118,13 +136,20 @@ class Overview extends AbstractShortcode {
           $attributes['highlight'] === 'day' && Weekdays::containsToday($row['days'])
             ? $attributes['highlighted_day_class']
             : '',
-        'dayCaption' => Weekdays::getDaysCaption($row['days'], $attributes['short'])
+        'dayCaption' => str_replace('.', '', Weekdays::getDaysCaption($row['days'], $attributes['short']))
       );
+      
+
+      if ($model->hasIrregularOpeningsOrHolidays()) {
+        $dayData['highlightedDayClass'] = $dayData['highlightedDayClass'] . " irregular_and_holidays_view";
+      }
 
       if ($row['items'] instanceof IrregularOpening) {
         $dayData['periodsMarkup'] = self::renderIrregularOpening($row['items'], $attributes);
+        $dayData['dayCaption'] = $dayData['dayCaption'] . " " . Dates::format('j', $row['items']->getStart()). ": ";
       } elseif ($row['items'] instanceof Holiday) {
-        $dayData['periodsMarkup'] = self::renderHoliday($row['items']);
+        $dayData['periodsMarkup'] = self::renderHoliday($row['items'], $attributes);
+        $dayData['dayCaption'] = $dayData['dayCaption'] . " " . Dates::format('j', $row['items']->getStart()). ": ";
       } elseif (count($row['items']) > 0) {
         $markup = '';
         /** @var Period $period */
@@ -137,17 +162,23 @@ class Overview extends AbstractShortcode {
             $period->getFormattedTimeRange($attributes['time_format'])
           );
         }
+        if ($model->hasIrregularOpeningsOrHolidays()) {
+            $dayData['dayCaption'] = $dayData['dayCaption'] . " " . Dates::format('j', $row['items'][0]->getTimeStart()) . ": ";
+        } else {
+            $dayData['dayCaption'] = $dayData['dayCaption'] . ": ";
+        }
         $dayData['periodsMarkup'] = $markup;
       } else {
-        $dayData['periodsMarkup'] = '<span class="op-closed">' . $attributes['caption_closed'] . '</span>';
+        if ($model->hasIrregularOpeningsOrHolidays()) {
+            $dayData['dayCaption'] = $dayData['dayCaption'] . " " . Dates::format('j', $row['items']->getStart()). ": ";
+        }   $dayData['periodsMarkup'] = '<span class="op-closed">' . $attributes['caption_closed'] . '</span>';
       }
 
       $days[] = $dayData;
     }
 
     $attributes['days'] = $days;
-
-    echo $this->renderShortcodeTemplate($attributes, $templateMap[$attributes['template']]);
+    echo str_replace('h00', 'h', str_replace('.00', '', $this->renderShortcodeTemplate($attributes, $templateMap[$attributes['template']]))); // remove h00 and .00 from 9h00 and 9.00am for eg.
   }
 
   /**
@@ -170,12 +201,12 @@ class Overview extends AbstractShortcode {
         ? $attributes['highlighted_period_class']
         : null;
 
-    $markup .= sprintf('<span class="op-period-time irregular-opening %s">%s</span>', $highlighted, $heading);
+    $markup .= sprintf('<span class="op-period-time irregular-opening %s" style="display:none">%s</span>', $highlighted, $heading);
 
     $time_start = $io->getStart()->format($attributes['time_format']);
     $time_end = $io->getEnd()->format($attributes['time_format']);
 
-    $markup .= sprintf('<span class="op-period-time %s">%s – %s</span>', $highlighted, $time_start, $time_end);
+    $markup .= sprintf('<span class="op-period-time irregular-opening %s">%s – %s</span>', $highlighted, $time_start, $time_end);
     return $markup;
   }
 
@@ -185,7 +216,7 @@ class Overview extends AbstractShortcode {
    * @param     Holiday $holiday    The Holiday item to show
    * @return    string              The holiday markup
    */
-  public static function renderHoliday(Holiday $holiday) {
-    return '<span class="op-period-time op-closed holiday">' . $holiday->getName() . '</span>';
+  public static function renderHoliday(Holiday $holiday, array $attributes) {
+    return '<span class="op-period-time op-closed holiday">' .$attributes['caption_closed'] . " (". $holiday->getName() . ')</span>';
   }
 }

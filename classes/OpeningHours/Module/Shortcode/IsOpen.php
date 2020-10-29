@@ -1,5 +1,5 @@
 <?php
-
+// Customized for BiUM from original file: https://github.com/janizde/WP-Opening-Hours/blob/master/classes/OpeningHours/Module/Shortcode/IsOpen.php
 namespace OpeningHours\Module\Shortcode;
 
 use OpeningHours\Entity\IrregularOpening;
@@ -43,7 +43,8 @@ class IsOpen extends AbstractShortcode {
       'open_class' => 'op-open',
       'closed_class' => 'op-closed',
       'date_format' => Dates::getDateFormat(),
-      'time_format' => Dates::getTimeFormat()
+      'time_format' => Dates::getTimeFormat(),
+      'lang' => 'en',
     );
 
     $this->validAttributeValues = array(
@@ -62,49 +63,35 @@ class IsOpen extends AbstractShortcode {
       return;
     }
 
-    $isOpen = $set->isOpen();
+    $is_library_open = $set->isOpen();
+    
     $todayData = $set->getDataForDate(Dates::getNow());
+    $todayPeriods = $this->getTodaysPeriods($todayData);
 
-    if ($attributes['show_next']) {
-      $nextPeriod = $set->getNextOpenPeriod();
-      $attributes['next_period'] = $set->getNextOpenPeriod();
-      $attributes['next_string'] = apply_filters(
-        self::FILTER_FORMAT_NEXT,
-        $this->formatNext($nextPeriod, $attributes),
-        $nextPeriod,
-        $attributes,
-        $todayData
-      );
-    }
-
-    if ($attributes['show_today'] === 'always' || ($attributes['show_today'] === 'open' && $isOpen)) {
-      $todayPeriods = $this->getTodaysPeriods($todayData);
-      $attributes['today_periods'] = $todayPeriods;
-      $attributes['today_string'] = apply_filters(
-        self::FILTER_FORMAT_TODAY,
-        $this->formatToday($todayPeriods, $attributes),
-        $todayPeriods,
-        $attributes,
-        $todayData
-      );
-    }
-
-    $attributes['is_open'] = $isOpen;
-    $attributes['classes'] .= $isOpen ? $attributes['open_class'] : $attributes['closed_class'];
-
-    // If the attribute show_closed_holidays is enabled
-    if ($attributes['show_closed_holidays']) {
-      $holidaysList = $this->getTodaysHolidaysCommaSeperated($todayData);
-      $closedText = $holidaysList
-        ? sprintf($attributes['closed_holiday_text'], $holidaysList)
-        : $attributes['closed_text'];
+    if ($is_library_open) {
+        echo '<div class="op-is-open-shortcode opening-hours-status-open"><span class="opening-hours-status">'.($attributes['lang'] == 'fr' ? 'Ouvert' : "Open").'</span><span class="opening-hours-next-status-sep"> &#8231; </span><span class="opening-hours-next-status">'.($attributes['lang'] == 'fr' ? 'jusqu\'à ' : "until ");
+        $attr = array(
+                    'time_format' => ($attributes['lang'] == 'fr' ? 'G\hi' : "g.ia"),
+                    'lang' => $attributes['lang'],
+                    );
+        echo str_replace('h00', 'h', str_replace('.00', '', $this->formatToday($todayPeriods, $attr)));
+        echo '</span> </div>';
     } else {
-      $closedText = $attributes['closed_text'];
+        echo '<div class="op-is-open-shortcode opening-hours-status-closed"><span class="opening-hours-status">'.($attributes['lang'] == 'fr' ? 'Fermé' : "Closed").'</span><span class="opening-hours-next-status-sep"> &#8231; </span><span class="opening-hours-next-status">';
+
+        $attr = array(
+                    'next_format' => 'Ouvre %2$s %1$s à %3$s', 
+                    'date_format' => "j M",
+                    'time_format' => ($attributes['lang'] == 'fr' ? 'G\hi' : "g.ia"),
+                    'lang' => $attributes['lang'],
+                    );
+        $nextPeriod = $set->getNextOpenPeriod();
+        $nextPeriod_string = str_replace('h00', 'h', str_replace('.00', '', $this->formatNext($nextPeriod, $attr)));
+        echo $nextPeriod_string;
+        echo '</span> </div>';
     }
+    
 
-    $attributes['text'] = $isOpen ? $attributes['open_text'] : $closedText;
-
-    echo $this->renderShortcodeTemplate($attributes, 'shortcode/is-open.php');
   }
 
   /**
@@ -165,8 +152,8 @@ class IsOpen extends AbstractShortcode {
 
     $periodsStart = $periods[0]->getTimeStart()->format($timeFormat);
     $periodsEnd = $periods[count($periods) - 1]->getTimeEnd()->format($timeFormat);
-
-    return sprintf($attributes['today_format'], $periodString, $periodsStart, $periodsEnd);
+    return $periodsEnd;
+    //return sprintf($attributes['today_format'], $periodString, $periodsStart, $periodsEnd);
   }
 
   /**
@@ -180,21 +167,30 @@ class IsOpen extends AbstractShortcode {
       return null;
     }
 
-    return sprintf(
-      // Format String
-      $attributes['next_format'],
-
-      // 1$: Formatted Date
-      Dates::format($attributes['date_format'], $nextPeriod->getTimeStart()),
-
-      // 2$: Translated Weekday
-      Weekdays::getWeekday($nextPeriod->getWeekday())->getName(),
-
-      // 3%: Formatted Start Time
-      $nextPeriod->getTimeStart()->format($attributes['time_format']),
-
-      // 4%: Formatted End Time
-      $nextPeriod->getTimeEnd()->format($attributes['time_format'])
-    );
+    // Does it open today?
+    if (Dates::compareDate(Dates::getNow(), $nextPeriod->getTimeStart()) == 0) {
+        if ($attributes['lang'] == 'fr') {
+            return 'Ouvre à ' . $nextPeriod->getTimeStart()->format($attributes['time_format']);
+        } else {
+            return 'Opens at ' . $nextPeriod->getTimeStart()->format($attributes['time_format']);
+        }
+    } else {
+        // Does it open tomorrow ? 
+        if ($nextPeriod->getTimeStart()->format('Ymd') ===  date('Ymd', strtotime('+1 day'))) {
+            if ($attributes['lang'] == 'fr') {
+                return 'Ouvre à ' . $nextPeriod->getTimeStart()->format($attributes['time_format']) . ' demain';
+            } else {
+                return 'Opens at ' . $nextPeriod->getTimeStart()->format($attributes['time_format']) . ' tomorrow';
+            }
+        } else {
+            // Opens again another day
+            if ($attributes['lang'] == 'fr') {
+                return 'Ouvre à ' . $nextPeriod->getTimeStart()->format($attributes['time_format']) . ', ' . Weekdays::getWeekday($nextPeriod->getWeekday())->getShortName() . ' ' . Dates::format('j', $nextPeriod->getTimeStart()) . ' ' . date_i18n("M", (int)$nextPeriod->getTimeStart()->format('U'));
+            } else {
+                return 'Opens at ' . $nextPeriod->getTimeStart()->format($attributes['time_format']) . ', ' . Weekdays::getWeekday($nextPeriod->getWeekday())->getShortName(). ' ' . Dates::format('j', $nextPeriod->getTimeStart()) . ' ' . date_i18n("M", (int)$nextPeriod->getTimeStart()->format('U'));
+            }
+        }
+    }
+    
   }
 }

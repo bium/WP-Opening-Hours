@@ -1,7 +1,7 @@
 <?php
 /*
- * Plugin Name: Opening Hours
- * Plugin URI: https://github.com/janizde/WP-Opening-Hours
+ * Plugin Name: Opening Hours customized for BiUM
+ * Plugin URI: https://github.com/bium/WP-Opening-Hours
  * Description: Manage your venue's Opening Hours, Holidays and Irregular Openings in WordPress and display them in many different Widgets and Shortcodes
  * Version: 2.2.1
  * Author: Jannik Portz
