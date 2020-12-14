@@ -217,6 +217,6 @@ class Overview extends AbstractShortcode {
    * @return    string              The holiday markup
    */
   public static function renderHoliday(Holiday $holiday, array $attributes) {
-    return '<span class="op-period-time op-closed holiday">' .$attributes['caption_closed'] . " (". $holiday->getName() . ')</span>';
+    return '<span class="op-period-time op-closed holiday">' .$attributes['caption_closed'] . (empty(trim($holiday->getName())) ? '' : " (". $holiday->getName(). ')'). '</span>';
   }
 }
